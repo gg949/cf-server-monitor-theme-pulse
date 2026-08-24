@@ -35,10 +35,10 @@ import {
   updateFlagImg,
   updateOsIconImg,
   wsTimeoutDialog,
-} from '../utils.js?v=1.2.0';
-import {getServers} from '../api.js?v=1.2.0';
-import {Playback, normalizeTs} from '../playback.js?v=1.2.0';
-import {MetricSocket} from '../ws.js?v=1.2.0';
+} from '../utils.js?v=1.2.1';
+import {getServers} from '../api.js?v=1.2.1';
+import {Playback, normalizeTs} from '../playback.js?v=1.2.1';
+import {MetricSocket} from '../ws.js?v=1.2.1';
 
 const MODE_LABELS = { bar: '条形', ring: '圆环', table: '表格' };
 
@@ -334,12 +334,26 @@ const PING_CARRIERS = [
 
 // ---------- 三网详情面板（站点开关 show_three_net_details，对齐官方 2.8.4） ----------
 // 数据：server.ping / server.loss 时序数组 [{ts, ct, cu, cm, bd}]（ts 秒/毫秒兼容），
-// 初始由后端窗口缓存下发，实时样本到达时在本地追加（对齐后端 buildLatencyPointFromMetrics）。
-// 布局：2×2 四宫格（电信/联通/移动/BGP），每格只画丢包率 30 桶；
+// 初始由后端窗口缓存下发，实时样本到达时在本地追加。
+// 布局：2×2 四宫格（电信/联通/移动/BGP），每格只画丢包率桶条；
 // 行头 左侧名称、右侧实时延迟，tooltip 合并展示 时间 · 延迟 · 丢包率。
 
 const TN_CARRIERS = PING_CARRIERS;
-const TN_BUCKETS = 30;
+// 窗口参数：2.8.4 Beta9+ 由 /api/config 的 latency_window {points, hours} 下发
+// （renderHome 入口处 applyLatencyWindow 应用）；缺省对齐 Beta8 的 20 点 × 1 小时
+let TN_BUCKETS = 20;
+let TN_BUCKET_MS = 3 * 60 * 1000;
+
+function applyLatencyWindow(config) {
+  const w = config && config.latency_window;
+  if (!w) return;
+  const points = Math.floor(Number(w.points));
+  const hours = Number(w.hours);
+  if (Number.isInteger(points) && points > 0 && Number.isFinite(hours) && hours > 0) {
+    TN_BUCKETS = points;
+    TN_BUCKET_MS = Math.max(10_000, Math.round((hours * 3_600_000) / points));
+  }
+}
 // 条带三级色：绿(正常) → 黄(关注) → 红(异常)
 const TN_STRIP_COLORS = ['var(--ok)', 'var(--warn)', 'var(--bad)'];
 // 延迟三档（好/低并档为绿）：用于历史点与当前点的等级比较
@@ -368,10 +382,9 @@ function hasTnSeries(d) {
   );
 }
 
-/** 实时样本应用到卡片数据后，把 ping/loss 采样点并入时序（保持最近 30 点）。
- *  对齐后端 MetricsBroadcaster 桶语义：ts 向下取整到 2 分钟桶，
- *  同桶覆盖、新桶追加——条带密度与后端窗口一致（2 分钟/桶，共 60 分钟窗口） */
-const TN_BUCKET_MS = 2 * 60 * 1000;
+/** 实时样本应用到卡片数据后，把 ping/loss 采样点并入时序（保持最近 TN_BUCKETS 点）。
+ *  桶宽 = 窗口小时数 × 1h / 点数（Beta9 为 2h/20 = 6 分钟），ts 向下取整进桶，
+ *  同桶覆盖、新桶追加——条带密度与后端抽样窗口一致 */
 
 function appendLatencyPoints(d, ts, data) {
   if (!ts) return;
@@ -486,11 +499,11 @@ function threeNetPanel() {
         cell.pingVal.className = `tn-val mono${pv.kind === 'ok' ? ` ${pingClass(pv.value)}` : ''}`;
         // 当前延迟等级：历史点比当前差时，桶色在丢包等级基础上加深一档（绿→黄→红）
         const curLevel = pv.kind === 'ok' ? tnPingLevel(pv.value) : null;
-        // 签名：两个序列的最新点 ts；不变则跳过 30 桶重绘（每秒 tick 省 DOM 写）
+        // 签名：两个序列的最新点 ts；不变则跳过整排桶重绘（每秒 tick 省 DOM 写）
         const sig = `${pingS.length ? pingS[pingS.length - 1].ts : 0}:${lossS.length ? lossS[lossS.length - 1].ts : 0}`;
         if (sig === cell.sig) continue;
         cell.sig = sig;
-        // 按 2 分钟桶位渲染（对齐后端固定窗口语义）：窗口 = 最新样本所在桶往前 30 桶；
+        // 按 TN_BUCKET_MS 桶位渲染（对齐后端抽样窗口语义）：窗口 = 最新样本所在桶往前 TN_BUCKETS 桶；
         // 点 ts 一律向下取整到桶边界（后端窗口点已对齐，但「最新点」保留原始样本 ts）；
         // 窗口内无点的桶位显示「无样本」，早于首个样本的桶位显示为占位空桶
         const pingByTs = new Map(
@@ -1159,6 +1172,7 @@ function skeletonHome() {
 // ---------- 主视图 ----------
 
 export async function renderHome(root, ctx) {
+  applyLatencyWindow(ctx.config);
   const view = el('div', { class: 'view view-enter' });
   root.append(view);
   view.append(skeletonHome());

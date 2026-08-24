@@ -89,6 +89,73 @@ body::before {
   background-size: auto, auto, 44px 44px, 44px 44px;
 }
 
+/* 站点背景图模式（html[data-bg="image"]，由 app.js 探测 worker 注入的背景）：
+   大卡片磨砂半透明让背景隐约透出，小控件同步降不透明度；网格装饰让位于图片 */
+html[data-bg="image"] body::before {
+  display: none;
+}
+
+html[data-bg="image"] .srv-card,
+html[data-bg="image"] .stat-card,
+html[data-bg="image"] .chart-card,
+html[data-bg="image"] .tile {
+  background: color-mix(in srgb, var(--panel) 62%, transparent);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+}
+
+html[data-bg="image"] .seg,
+html[data-bg="image"] .search-input,
+html[data-bg="image"] .ws-pill,
+html[data-bg="image"] .icon-btn,
+html[data-bg="image"] .back-btn {
+  background: color-mix(in srgb, var(--panel) 54%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+html[data-bg="image"] .site-header {
+  background: color-mix(in srgb, var(--bg) 62%, transparent);
+}
+
+/* 详情页头部（机器名 + chips）默认无底，背景图模式下会融进图片，补磨砂底 */
+html[data-bg="image"] .detail-head {
+  background: color-mix(in srgb, var(--panel) 54%, transparent);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+
+/* 离线卡片：遮盖色叠在磨砂卡片上会糊成一整块死色，
+   背景图模式下改为直接压暗/降饱和内容，由「已离线」徽标承载状态 */
+html[data-bg="image"] .srv-card.is-off .srv-live::before {
+  display: none;
+}
+
+html[data-bg="image"] .srv-card.is-off .srv-live > * {
+  opacity: 0.45;
+  filter: saturate(0.5);
+}
+
+/* 浅色面板透明白在明亮图片上对比度不足，回收一部分透明度 */
+html[data-bg="image"][data-theme="light"] .srv-card,
+html[data-bg="image"][data-theme="light"] .stat-card,
+html[data-bg="image"][data-theme="light"] .chart-card,
+html[data-bg="image"][data-theme="light"] .tile {
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+}
+
+html[data-bg="image"][data-theme="light"] .seg,
+html[data-bg="image"][data-theme="light"] .search-input,
+html[data-bg="image"][data-theme="light"] .ws-pill,
+html[data-bg="image"][data-theme="light"] .icon-btn,
+html[data-bg="image"][data-theme="light"] .back-btn,
+html[data-bg="image"][data-theme="light"] .detail-head {
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
@@ -497,8 +564,9 @@ button {
   pointer-events: none;
 }
 
-/* 遮罩中央的离线徽标 */
-.srv-card.is-off .srv-live::after {
+/* 徽标定位到整卡中心（而非实时区中心）：不同卡的实时区高度不一，
+   按实时区居中会导致各卡徽标高矮不齐 */
+.srv-card.is-off::after {
   content: "已离线";
   position: absolute;
   top: 50%;

@@ -5,12 +5,12 @@
 //   accent: "#2dd4bf"   主题强调色
 //   mode:   "dark" | "light"   默认配色模式（用户手动切换后优先用户选择）
 
-const THEME_VERSION = 'v1.2.0';
+const THEME_VERSION = 'v1.2.1';
 
-import {el, fmtClock, serverNow, stateBlock, svg} from './utils.js?v=1.2.0';
-import {getConfig} from './api.js?v=1.2.0';
-import {renderHome} from './views/home.js?v=1.2.0';
-import {renderDetail} from './views/detail.js?v=1.2.0';
+import {el, fmtClock, serverNow, stateBlock, svg} from './utils.js?v=1.2.1';
+import {getConfig} from './api.js?v=1.2.1';
+import {renderHome} from './views/home.js?v=1.2.1';
+import {renderDetail} from './views/detail.js?v=1.2.1';
 
 const html = document.documentElement;
 const THEME_KEY = 'probe_color_mode';
@@ -29,6 +29,15 @@ function initialColorMode() {
   return 'dark';
 }
 html.dataset.theme = initialColorMode();
+
+// 站点配置了背景图时（worker 会向 body 注入背景），卡片切换为磨砂半透明。
+// iOS 下 worker 改用 body::after 承载背景图，两处都要探测
+function detectBgImage() {
+  const bodyBg = getComputedStyle(document.body).backgroundImage;
+  const afterBg = getComputedStyle(document.body, '::after').backgroundImage;
+  if (bodyBg !== 'none' || afterBg !== 'none') html.dataset.bg = 'image';
+}
+detectBgImage();
 
 // ---------- 全局上下文 ----------
 

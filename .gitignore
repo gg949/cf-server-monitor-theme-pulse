@@ -1,4 +1,5 @@
 .idea/
 CF-Server-Monitor/
-dev_proxy.py
+dev_config.py
+bg-test.jpg
 __pycache__/

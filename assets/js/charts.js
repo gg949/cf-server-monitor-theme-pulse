@@ -2,9 +2,8 @@
 // - 多序列、空值断线、渐变面积填充
 // - 悬浮十字线 + tooltip
 // - ResizeObserver 自适应宽度
-// - append() 支持实时追加数据点并按窗口裁剪
 
-import {el, fmtDateTime, fmtTimeShort, serverNow, svg} from './utils.js?v=1.2.0';
+import {el, fmtDateTime, fmtTimeShort, serverNow, svg} from './utils.js?v=1.2.1';
 
 let chartUid = 0;
 
@@ -58,22 +57,6 @@ export class LineChart {
   setSeries(series) {
     this.series = series;
     this._draw();
-  }
-
-  /** 追加一个采样点：pointsByKey = { [seriesKey]: y|null } */
-  append(pointsByKey, ts, trimBefore) {
-    let touched = false;
-    for (const s of this.series) {
-      if (!(s.key in pointsByKey)) continue;
-      s.data.push({ x: ts, y: pointsByKey[s.key] });
-      touched = true;
-      if (trimBefore != null) {
-        let cut = 0;
-        while (cut < s.data.length && s.data[cut].x < trimBefore) cut += 1;
-        if (cut > 0) s.data.splice(0, cut);
-      }
-    }
-    if (touched) this._draw();
   }
 
   destroy() {

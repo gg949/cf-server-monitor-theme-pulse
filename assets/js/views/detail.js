@@ -34,11 +34,11 @@ import {
   updateFlagImg,
   updateOsIconImg,
   wsTimeoutDialog,
-} from '../utils.js?v=1.2.0';
-import {getAuthToken, getHistory, getServer, getServers} from '../api.js?v=1.2.0';
-import {Playback, normalizeTs} from '../playback.js?v=1.2.0';
-import {MetricSocket} from '../ws.js?v=1.2.0';
-import {LineChart} from '../charts.js?v=1.2.0';
+} from '../utils.js?v=1.2.1';
+import {getAuthToken, getHistory, getServer, getServers} from '../api.js?v=1.2.1';
+import {Playback, normalizeTs} from '../playback.js?v=1.2.1';
+import {MetricSocket} from '../ws.js?v=1.2.1';
+import {LineChart} from '../charts.js?v=1.2.1';
 
 const COLORS = {
   teal: '#2dd4bf',
@@ -625,48 +625,19 @@ export async function renderDetail(root, ctx, id) {
   view.append(backBtn, head, tilesGrid, chartsHead, chartsGrid);
   loadRange(0.167);
 
-  // ----- WebSocket 实时追加（全局统一 1s tick 回放） -----
-  // 全局单一定时器：样本回放与磁贴/图表刷新共用同一个 tick
+  // ----- WebSocket 实时刷新（全局统一 1s tick 回放） -----
+  // 只刷新头部芯片与磁贴；趋势图保持静态（切换时间范围时整体重取），
+  // 不把每秒样本实时填进图表
   const playback = new Playback(
     (serverId, data, ts, displayTs, meta) => {
       if (serverId !== id) return;
       Object.assign(srv, data);
-      // 在线判定使用批次上报时间（对齐官方 last_updated = report_timestamp）；
-      // 图表 x 轴仍使用样本采集时刻
+      // 在线判定使用批次上报时间（对齐官方 last_updated = report_timestamp）
       srv.last_updated = meta && meta.reportTs ? meta.reportTs : serverNow();
       srv.sample_ts = ts;
       srv.display_ts = displayTs;
       srv.report_ts = meta ? meta.reportTs : null;
       srv.batch_size = meta ? meta.batchSize : 1;
-      const trim = serverNow() - currentHours * 3_600_000;
-      charts.cpu.append({ cpu: num(data.cpu) }, ts, trim);
-      charts.ram.append(
-        { ram: pct(data.ram_used, data.ram_total), swap: pct(data.swap_used, data.swap_total) },
-        ts,
-        trim,
-      );
-      charts.disk.append({ disk: pct(data.disk_used, data.disk_total) }, ts, trim);
-      charts.diskio.append(
-        {
-          diskRead: num(data.disk_read_bps ?? (data.disk && data.disk.read_bps)),
-          diskWrite: num(data.disk_write_bps ?? (data.disk && data.disk.write_bps)),
-        },
-        ts,
-        trim,
-      );
-      charts.net.append({ netIn: num(data.net_in_speed), netOut: num(data.net_out_speed) }, ts, trim);
-      charts.ping.append(
-        {
-          pingCt: pingState(data.ping_ct).value,
-          pingCu: pingState(data.ping_cu).value,
-          pingCm: pingState(data.ping_cm).value,
-          pingBd: pingState(data.ping_bd).value,
-        },
-        ts,
-        trim,
-      );
-      const [l1, l5, l15] = loadParts(data.load_avg);
-      charts.load.append({ load1: l1, load5: l5, load15: l15 }, ts, trim);
     },
     () => {
       // onTick：同步展示时钟（(+Ns) 每秒增长），再统一驱动头部芯片 + 磁贴刷新

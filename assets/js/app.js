@@ -4,13 +4,14 @@
 // 支持的主题自定义项（管理端「主题设置」theme_options，均为可选）：
 //   accent: "#2dd4bf"   主题强调色
 //   mode:   "dark" | "light"   默认配色模式（用户手动切换后优先用户选择）
+//   sectionMark: false          关闭小标题（分组标题 / 趋势标题）前的 "//" 装饰
 
-const THEME_VERSION = 'v1.2.1';
+const THEME_VERSION = 'v1.2.2';
 
-import {el, fmtClock, serverNow, stateBlock, svg} from './utils.js?v=1.2.1';
-import {getConfig} from './api.js?v=1.2.1';
-import {renderHome} from './views/home.js?v=1.2.1';
-import {renderDetail} from './views/detail.js?v=1.2.1';
+import {el, fmtClock, serverNow, stateBlock, svg, toast} from './utils.js?v=1.2.2';
+import {getAuthToken, getConfig, saveThemeOptions} from './api.js?v=1.2.2';
+import {renderHome} from './views/home.js?v=1.2.2';
+import {renderDetail} from './views/detail.js?v=1.2.2';
 
 const html = document.documentElement;
 const THEME_KEY = 'probe_color_mode';
@@ -80,6 +81,84 @@ function moonIcon() {
   );
 }
 
+function gearIcon() {
+  return svg(
+    'svg',
+    { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' },
+    svg('path', { d: 'M4 8h9M19 8h1M4 16h1M9 16h11' }),
+    svg('circle', { cx: '16', cy: '8', r: '2.4' }),
+    svg('circle', { cx: '6', cy: '16', r: '2.4' }),
+  );
+}
+
+// ---------- 主题设置弹窗（仅管理员可见） ----------
+
+function openSettingsDialog() {
+  const current = (ctx.config && ctx.config.theme_options) || {};
+  let showMark = current.sectionMark !== false;
+
+  const btnShow = el('button', { class: 'seg-btn', text: '展示' });
+  const btnHide = el('button', { class: 'seg-btn', text: '关闭' });
+  const syncSeg = () => {
+    btnShow.classList.toggle('active', showMark);
+    btnHide.classList.toggle('active', !showMark);
+  };
+  btnShow.addEventListener('click', () => { showMark = true; syncSeg(); });
+  btnHide.addEventListener('click', () => { showMark = false; syncSeg(); });
+  syncSeg();
+
+  const errBox = el('p', { class: 'probe-dialog-err' });
+  const saveBtn = el('button', { class: 'btn', text: '保存' });
+  const close = () => overlay.remove();
+  const overlay = el(
+    'div',
+    { class: 'probe-overlay' },
+    el(
+      'div',
+      { class: 'probe-dialog', role: 'dialog', 'aria-modal': 'true' },
+      el('div', { class: 'probe-dialog-title', text: '主题设置' }),
+      el(
+        'div',
+        { class: 'setting-row' },
+        el('span', { class: 'setting-label', text: '小标题图标' }),
+        el('div', { class: 'seg' }, btnShow, btnHide),
+      ),
+      errBox,
+      el(
+        'div',
+        { class: 'probe-dialog-actions' },
+        el('button', { class: 'btn btn-ghost', onClick: close }, '取消'),
+        saveBtn,
+      ),
+    ),
+  );
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    errBox.textContent = '';
+    try {
+      // 接口整体替换 theme_options，先合并已有配置避免覆盖 accent/mode 等键
+      const merged = { ...current, sectionMark: showMark };
+      const res = await saveThemeOptions(merged);
+      ctx.config.theme_options = (res && res.theme_options) || merged;
+      applyThemeOptions(ctx.config.theme_options);
+      toast('主题设置已保存');
+      close();
+    } catch (err) {
+      errBox.textContent = err.status === 401
+        ? '登录已过期，请重新登录后再保存'
+        : err.message || '保存失败，请稍后重试';
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  (document.getElementById('overlay-root') || document.body).append(overlay);
+}
+
 // ---------- 顶栏 / 页脚 ----------
 
 function renderHeader(config) {
@@ -133,7 +212,21 @@ function renderHeader(config) {
   tick();
   setInterval(tick, 1000);
 
-  header.append(brand, el('div', { class: 'header-right' }, pill, toggle, clock));
+  // 主题设置入口：仅管理端 JWT 存在时可见（主题本身无登录功能）
+  const right = [pill, toggle];
+  if (getAuthToken()) {
+    const settingsBtn = el('button', {
+      class: 'icon-btn',
+      title: '主题设置',
+      'aria-label': '主题设置',
+      onClick: () => openSettingsDialog(),
+    });
+    settingsBtn.append(gearIcon());
+    right.push(settingsBtn);
+  }
+  right.push(clock);
+
+  header.append(brand, el('div', { class: 'header-right' }, right));
 }
 
 function renderFooter(config) {
@@ -176,6 +269,9 @@ function applyThemeOptions(options) {
   if (!saved && (options.mode === 'light' || options.mode === 'dark')) {
     html.dataset.theme = options.mode;
   }
+  // 小标题 "//" 装饰开关（默认展示）
+  if (options.sectionMark === false) html.dataset.sectionMark = 'off';
+  else delete html.dataset.sectionMark;
 }
 
 // ---------- 启动 ----------

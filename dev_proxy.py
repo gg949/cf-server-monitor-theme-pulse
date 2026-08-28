@@ -49,6 +49,14 @@ class Handler(SimpleHTTPRequestHandler):
             return self.serve_index()
         return super().do_GET()
 
+    def do_POST(self):
+        if self.path.startswith("/api/"):
+            length = int(self.headers.get("Content-Length") or 0)
+            data = self.rfile.read(length) if length else None
+            self.proxy_http(method="POST", data=data)
+            return
+        self.send_error(501, "Unsupported method ('POST')")
+
     def serve_index(self):
         """按 worker buildBackgroundStyle 的方式向 index.html 注入背景图样式"""
         with open("index.html", "rb") as f:
@@ -65,11 +73,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def proxy_http(self):
+    def proxy_http(self, method="GET", data=None):
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP_HEADERS}
         if JWT_TOKEN:
             headers["Authorization"] = f"Bearer {JWT_TOKEN}"
-        req = urllib.request.Request(UPSTREAM + self.path, headers=headers)
+        req = urllib.request.Request(UPSTREAM + self.path, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 status, body = resp.status, resp.read()

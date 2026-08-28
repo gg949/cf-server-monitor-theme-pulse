@@ -9,7 +9,7 @@
 //   用于解锁 1 小时以上的历史查询；主题本身不提供登录功能。
 // - 站点开启 Turnstile 时，先完成人机验证换取 turnstile_verified 凭证再请求数据。
 
-import {el, syncServerTime} from './utils.js?v=1.2.1';
+import {el, syncServerTime} from './utils.js?v=1.2.2';
 
 const API_BASE = (window.__API_BASE__ || '').replace(/\/$/, '');
 const CRED_KEY = 'probe_ts_cred';
@@ -226,5 +226,18 @@ export function getServer(id) {
 
 export function getHistory(id, hours) {
   return request(`/api/history/all?id=${encodeURIComponent(id)}&hours=${hours}`);
+}
+
+// 主题配置保存（2.8.4 Beta10+）：整体替换 theme_options，
+// 调用方需先合并已有配置再提交，避免覆盖其他键
+export async function saveThemeOptions(themeOptions) {
+  const res = await fetch(`${API_BASE}/api/theme_options`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ theme_options: themeOptions }),
+  });
+  anchorClock(res);
+  if (!res.ok) throw await toError(res);
+  return res.json();
 }
 

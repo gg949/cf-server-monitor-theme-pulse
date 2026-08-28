@@ -3,7 +3,7 @@
 // - 悬浮十字线 + tooltip
 // - ResizeObserver 自适应宽度
 
-import {el, fmtDateTime, fmtTimeShort, serverNow, svg} from './utils.js?v=1.2.1';
+import {el, fmtClock, fmtDateTime, fmtTimeShort, serverNow, svg} from './utils.js?v=1.2.2';
 
 let chartUid = 0;
 
@@ -100,7 +100,7 @@ export class LineChart {
     const hi = this.o.yMax != null ? this.o.yMax : niceMax(yMaxSeen * 1.15);
     const X = (x) => P.l + ((x - xMin) / (xMax - xMin)) * iw;
     const Y = (y) => P.t + ih - ((y - lo) / (hi - lo)) * ih;
-    this._scale = { X, Y, xMin, xMax, P, W, H };
+    this._scale = { X, Y, xMin, xMax, P, W, H, span: xMax - xMin };
 
     // 网格 + y 轴标签
     for (let i = 0; i <= 4; i += 1) {
@@ -112,9 +112,9 @@ export class LineChart {
       );
     }
 
-    // x 轴时间标签
+    // x 轴时间标签：≤10 分钟的窗口（实时模式）精确到秒
     const span = xMax - xMin;
-    const xFmt = span > 86_400_000 ? fmtDateTime : fmtTimeShort;
+    const xFmt = span > 86_400_000 ? fmtDateTime : span > 600_000 ? fmtTimeShort : fmtClock;
     for (let i = 0; i <= 4; i += 1) {
       const xv = xMin + (span * i) / 4;
       this.svg.append(
@@ -242,7 +242,8 @@ export class LineChart {
     this._hoverG = g;
 
     this.tip.textContent = '';
-    this.tip.append(el('div', { class: 'chart-tip-time', text: fmtDateTime(anchor.x) }));
+    const tipFmt = this._scale.span > 600_000 ? fmtDateTime : fmtClock;
+    this.tip.append(el('div', { class: 'chart-tip-time', text: tipFmt(anchor.x) }));
     for (const r of rows) {
       const dotEl = el('i', { class: 'chip-dot' });
       dotEl.style.backgroundColor = r.color;

@@ -6,7 +6,7 @@
 // - 跨域 API 基座时把管理端 JWT 拼到 WS URL（官方同 Host 免带，跨域必须带）
 // - batchUpdate 的服务端时间戳同时用于校准全局服务器时钟（见 utils.syncServerTime）
 
-import {normalizeWsTimeoutMinutes, syncServerTime} from './utils.js?v=1.2.1';
+import {normalizeWsTimeoutMinutes, syncServerTime} from './utils.js?v=1.2.2';
 
 export class MetricSocket {
   /**
@@ -77,7 +77,9 @@ export class MetricSocket {
     ws.onopen = () => {
       this._retry = 0;
       this.onState('open');
-      if (this.scope === 'all' && this.ids.length) this._sendSubscribe();
+      // 对齐官方：连接建立后总是发送 subscribe（含具体 scope 与 ids 过滤），
+      // 服务端据此更新订阅附件并提示探针进入实时上报
+      this._sendSubscribe();
       this._pingTimer = setInterval(() => this._send({ type: 'ping' }), 25_000);
       // 连接寿命计时：到期断开并等待用户选择（对齐官方 connectionLifetimeTimer）
       clearTimeout(this._lifeTimer);
@@ -156,7 +158,7 @@ export class MetricSocket {
   }
 
   _sendSubscribe() {
-    this._send({ type: 'subscribe', scope: 'all', ids: this.ids.slice(0, 500) });
+    this._send({ type: 'subscribe', scope: this.scope, ids: this.ids.slice(0, 500) });
   }
 
   setIds(ids) {

@@ -35,10 +35,10 @@ import {
   updateFlagImg,
   updateOsIconImg,
   wsTimeoutDialog,
-} from '../utils.js?v=1.2.1';
-import {getServers} from '../api.js?v=1.2.1';
-import {Playback, normalizeTs} from '../playback.js?v=1.2.1';
-import {MetricSocket} from '../ws.js?v=1.2.1';
+} from '../utils.js?v=1.2.2';
+import {getServers} from '../api.js?v=1.2.2';
+import {Playback, normalizeTs} from '../playback.js?v=1.2.2';
+import {MetricSocket} from '../ws.js?v=1.2.2';
 
 const MODE_LABELS = { bar: '条形', ring: '圆环', table: '表格' };
 
@@ -684,8 +684,8 @@ function barCard(s, sysConfig) {
   );
 
   const card = el(
-    'article',
-    { class: 'srv-card', tabindex: '0', role: 'link' },
+    'a',
+    { class: 'srv-card', href: `#/server/${encodeURIComponent(s.id)}` },
     el(
       'div',
       { class: 'srv-head' },
@@ -697,13 +697,13 @@ function barCard(s, sysConfig) {
     liveZone,
   );
 
-  const go = () => {
-    location.hash = `#/server/${encodeURIComponent(s.id)}`;
-  };
-  card.addEventListener('click', go);
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') go();
-  });
+  // ping / 三网面板：点击不跳转详情（浏览桶条 tooltip 时防误触）
+  for (const zone of [pings.el, tn.el]) {
+    zone.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
 
   function render(d) {
     const online = isOnline(d);
@@ -921,8 +921,8 @@ function ringCard(s, sysConfig) {
   );
 
   const card = el(
-    'article',
-    { class: 'srv-card', tabindex: '0', role: 'link' },
+    'a',
+    { class: 'srv-card', href: `#/server/${encodeURIComponent(s.id)}` },
     el(
       'div',
       { class: 'srv-head' },
@@ -934,13 +934,13 @@ function ringCard(s, sysConfig) {
     liveZone,
   );
 
-  const go = () => {
-    location.hash = `#/server/${encodeURIComponent(s.id)}`;
-  };
-  card.addEventListener('click', go);
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') go();
-  });
+  // ping / 三网面板：点击不跳转详情（浏览桶条 tooltip 时防误触）
+  for (const zone of [pings.el, tn.el]) {
+    zone.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  }
 
   function render(d) {
     const online = isOnline(d);
@@ -1212,9 +1212,10 @@ export async function renderHome(root, ctx) {
   ctx.sysConfig = sysConfig;
   const dataMap = new Map(servers.map((s) => [s.id, s]));
 
-  // 过滤条件持久化在 hash 查询串（#/?q=xxx），刷新/分享链接可还原
+  // 过滤条件持久化在 hash 查询串（#/?q=xxx&region=CC），刷新/分享链接可还原
   const urlQuery = () => new URLSearchParams((location.hash.match(/\?(.+)$/) || [])[1] || '');
   const initialQuery = (urlQuery().get('q') || '').trim();
+  const initialRegion = (urlQuery().get('region') || '').trim().toUpperCase();
   const state = {
     mode:
       localStorage.getItem('probe_display_mode') ||
@@ -1222,6 +1223,7 @@ export async function renderHome(root, ctx) {
       (ctx.config && ctx.config.display_mode) ||
       'bar',
     filter: initialQuery.toLowerCase(),
+    region: /^[A-Z]{2}$/.test(initialRegion) ? initialRegion : null,
   };
   if (!MODE_LABELS[state.mode]) state.mode = 'bar';
 
@@ -1259,14 +1261,34 @@ export async function renderHome(root, ctx) {
   );
 
   const regionStats = payload.regionStats || {};
+  const regionChips = new Map();
   const regionRow = el(
     'div',
     { class: 'regions-row' },
-    Object.entries(regionStats).map(([cc, n]) =>
-      el('span', { class: 'region-chip' }, flagImg(cc), document.createTextNode(` ${cc} · ${n}`)),
-    ),
+    Object.entries(regionStats).map(([cc, n]) => {
+      const chip = el(
+        'button',
+        { class: 'region-chip', type: 'button', title: `只看 ${cc}` },
+        flagImg(cc),
+        document.createTextNode(` ${cc} · ${n}`),
+      );
+      chip.addEventListener('click', () => {
+        state.region = state.region === cc ? null : cc;
+        syncRegionChips();
+        syncUrl();
+        applyFilter();
+        refreshStats();
+      });
+      regionChips.set(cc, chip);
+      return chip;
+    }),
   );
   regionRow.style.display = Object.keys(regionStats).length ? '' : 'none';
+
+  function syncRegionChips() {
+    for (const [cc, chip] of regionChips) chip.classList.toggle('active', state.region === cc);
+  }
+  syncRegionChips();
 
   // ----- 工具栏 -----
   const search = el('input', {
@@ -1320,6 +1342,7 @@ export async function renderHome(root, ctx) {
   }
 
   function matchFilter(d) {
+    if (state.region && String(d.region || '').toUpperCase() !== state.region) return false;
     if (!state.filter) return true;
     const hay = `${d.name || ''} ${d.server_group || ''} ${d.tags || ''} ${d.region || ''} ${d.os || ''}`.toLowerCase();
     return hay.includes(state.filter);
@@ -1398,13 +1421,21 @@ export async function renderHome(root, ctx) {
     }
   }
 
+  // replaceState 不产生历史记录、不触发 hashchange 重路由
+  function syncUrl() {
+    const params = new URLSearchParams();
+    const q = search.value.trim();
+    if (q) params.set('q', q);
+    if (state.region) params.set('region', state.region);
+    const qs = params.toString();
+    history.replaceState(null, '', qs ? `#/?${qs}` : '#/');
+  }
+
   search.addEventListener(
     'input',
     debounce(() => {
       state.filter = search.value.trim().toLowerCase();
-      // replaceState 不产生历史记录、不触发 hashchange 重路由
-      const q = search.value.trim();
-      history.replaceState(null, '', q ? `#/?q=${encodeURIComponent(q)}` : '#/');
+      syncUrl();
       applyFilter();
       refreshStats();
     }, 120),

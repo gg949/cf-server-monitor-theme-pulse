@@ -34,11 +34,11 @@ import {
   updateFlagImg,
   updateOsIconImg,
   wsTimeoutDialog,
-} from '../utils.js?v=1.2.1';
-import {getAuthToken, getHistory, getServer, getServers} from '../api.js?v=1.2.1';
-import {Playback, normalizeTs} from '../playback.js?v=1.2.1';
-import {MetricSocket} from '../ws.js?v=1.2.1';
-import {LineChart} from '../charts.js?v=1.2.1';
+} from '../utils.js?v=1.2.2';
+import {getAuthToken, getHistory, getServer, getServers} from '../api.js?v=1.2.2';
+import {Playback, normalizeTs} from '../playback.js?v=1.2.2';
+import {MetricSocket} from '../ws.js?v=1.2.2';
+import {LineChart} from '../charts.js?v=1.2.2';
 
 const COLORS = {
   teal: '#2dd4bf',
@@ -50,7 +50,9 @@ const COLORS = {
   red: '#fb7185',
 };
 
+// hours=0 为「实时」：WS 秒级样本直接入图，最多保留 60 个点
 const RANGES = [
+  { label: '实时', hours: 0 },
   { label: '10分钟', hours: 0.167 },
   { label: '30分钟', hours: 0.5 },
   { label: '1小时', hours: 1 },
@@ -288,7 +290,7 @@ export async function renderDetail(root, ctx, id) {
       chips.push(osChipNode);
     }
     if (d.arch) chips.push(d.arch);
-    if (d.agent_version) chips.push(`Agent v${d.agent_version}`);
+    if (d.agent_version) chips.push(`Agent ${d.agent_version}`);
     if (String(d.is_hidden) === '1') chips.push('隐藏');
     chips.push(online ? '在线' : `离线 · ${timeAgo(d.last_updated)}`);
     chips.forEach((t, i) => {
@@ -589,11 +591,45 @@ export async function renderDetail(root, ctx, id) {
   let currentHours = 1;
   let longLocked = false;
 
+  // ----- 实时模式（hours=0）：秒级样本环形缓冲，最多 60 点 -----
+  const LIVE_MAX_POINTS = 60;
+  const liveData = {
+    cpu: [], ram: [], swap: [], disk: [],
+    diskRead: [], diskWrite: [],
+    netIn: [], netOut: [],
+    pingCt: [], pingCu: [], pingCm: [], pingBd: [],
+    load1: [], load5: [], load15: [],
+  };
+
+  function appendLiveSample(d, ts) {
+    if (!ts) return;
+    const mapped = mapRows([{ ...d, timestamp: ts }]);
+    for (const [key, pts] of Object.entries(mapped)) {
+      const arr = liveData[key];
+      if (!arr) continue;
+      arr.push(...pts);
+      if (arr.length > LIVE_MAX_POINTS) arr.splice(0, arr.length - LIVE_MAX_POINTS);
+    }
+  }
+
+  function applyLiveToCharts() {
+    for (const [cid, chart] of Object.entries(charts)) {
+      chart.setSeries(CHART_SERIES[cid].map((d) => ({ ...d, data: liveData[d.key] })));
+    }
+  }
+
   function syncRangeBtns() {
     for (const [h, b] of rangeBtns) b.classList.toggle('active', h === currentHours);
   }
 
   async function loadRange(hours) {
+    // 实时模式：不发历史请求，直接展示已累积的秒级样本
+    if (hours === 0) {
+      currentHours = 0;
+      syncRangeBtns();
+      applyLiveToCharts();
+      return;
+    }
     // 访客上限 24h（服务端强制 401）：未登录点击更长范围直接提示，不发必败的请求
     if (hours > 24 && !getAuthToken()) {
       toast('非登录最多查询 24 小时数据，请先登录');
@@ -626,12 +662,14 @@ export async function renderDetail(root, ctx, id) {
   loadRange(0.167);
 
   // ----- WebSocket 实时刷新（全局统一 1s tick 回放） -----
-  // 只刷新头部芯片与磁贴；趋势图保持静态（切换时间范围时整体重取），
-  // 不把每秒样本实时填进图表
+  // 刷新头部芯片与磁贴；样本同时进入实时环形缓冲（60 点），
+  // 「实时」范围下趋势图随样本逐点追加，其余范围保持静态
   const playback = new Playback(
     (serverId, data, ts, displayTs, meta) => {
       if (serverId !== id) return;
       Object.assign(srv, data);
+      appendLiveSample(data, ts);
+      if (currentHours === 0) applyLiveToCharts();
       // 在线判定使用批次上报时间（对齐官方 last_updated = report_timestamp）
       srv.last_updated = meta && meta.reportTs ? meta.reportTs : serverNow();
       srv.sample_ts = ts;
@@ -655,6 +693,7 @@ export async function renderDetail(root, ctx, id) {
     playback.seed(id, seedTs);
     srv.sample_ts = seedTs;
     srv.display_ts = seedTs;
+    appendLiveSample(srv, seedTs);
   }
   // 详情页初始回放：/api/server 返回的 latestReportUpdates（对齐官方 2ec4518）
   for (const u of srv.latestReportUpdates || []) {

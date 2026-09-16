@@ -235,10 +235,10 @@ function renderFooter(config) {
   footer.append(
     el('a', {
       class: 'f-brand',
-      href: 'https://github.com/huilang-me/CF-Server-Monitor',
+      href: 'https://github.com/gg949/ProbeDeck',
       target: '_blank',
       rel: 'noopener',
-      text: 'CF-Server-Monitor',
+      text: 'ProbeDeck',
     }),
     el('span', { text: ` ${config.version || ''} · ` }),
     el('a', {

@@ -62,6 +62,8 @@ const RANGES = [
   { label: '2天', hours: 48 },
   { label: '4天', hours: 96 },
   { label: '7天', hours: 168 },
+  { label: '14天', hours: 336 },
+  { label: '30天', hours: 720 },
 ];
 
 const CARRIERS = [
@@ -630,9 +632,9 @@ export async function renderDetail(root, ctx, id) {
       applyLiveToCharts();
       return;
     }
-    // 访客上限 24h（服务端强制 401）：未登录点击更长范围直接提示，不发必败的请求
-    if (hours > 24 && !getAuthToken()) {
-      toast('非登录最多查询 24 小时数据，请先登录');
+    // 访客上限 30 天（服务端强制 401）：未登录点击更长范围直接提示，不发必败的请求
+    if (hours > 720 && !getAuthToken()) {
+      toast('非登录最多查询 30 天数据，请先登录');
       syncRangeBtns();
       return;
     }
@@ -645,9 +647,9 @@ export async function renderDetail(root, ctx, id) {
         chart.setSeries(CHART_SERIES[cid].map((d) => ({ ...d, data: mapped[d.key] })));
       }
     } catch (err) {
-      if (err.status === 401 && hours > 24) {
-        toast('非登录最多查询 24 小时数据，请先登录');
-        if (currentHours > 24) loadRange(24);
+      if (err.status === 401 && hours > 720) {
+        toast('非登录最多查询 30 天数据，请先登录');
+        if (currentHours > 720) loadRange(720);
       } else if (err.status === 409) {
         toast('历史数据库需要升级，请联系管理员');
       } else {

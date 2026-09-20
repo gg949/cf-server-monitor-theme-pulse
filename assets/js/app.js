@@ -243,7 +243,7 @@ function renderFooter(config) {
     el('span', { text: ` ${config.version || ''} · ` }),
     el('a', {
       class: 'f-brand',
-      href: 'https://github.com/loongkong/cf-server-monitor-theme-pulse',
+      href: 'https://github.com/gg949/cf-server-monitor-theme-pulse',
       target: '_blank',
       rel: 'noopener',
       text: 'Pulse',

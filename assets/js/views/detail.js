@@ -75,19 +75,28 @@ const CARRIERS = [
 ];
 function pingKey(id){return id==='ct'?'pingCt':id==='cu'?'pingCu':id==='cm'?'pingCm':id==='bd'?'pingBd':'ping_'+id}
 function pingSeriesFromData(data, server) {
-  const probes = Array.isArray(server && server.probes) ? server.probes.filter(p => p && p.id) : [];
-  if (probes.length) {
-    return probes.map((p, i) => ({ key: pingKey(p.id), label: String(p.name || p.id), color: __pdColor(i) }));
+  return __pdUnion(server).map(p => ({ key: pingKey(p.key), label: p.label, color: p.color }));
+}
+function __pdUnion(server) {
+  const slots = ['ct','cu','cm','bd','node_1','node_2','node_3','node_4','node_5','node_6','node_7','node_8','node_9','node_10','node_11','node_12','node_13','node_14','node_15','node_16','node_17','node_18','node_19','node_20'];
+  const s = server || {};
+  const probeById = new Map((Array.isArray(s.probes) ? s.probes : []).filter(p => p && p.id).map(p => [String(p.id), p]));
+  const out = [];
+  for (const id of slots) {
+    const p = probeById.get(id);
+    const ping = s['ping_' + id];
+    const loss = s['loss_' + id];
+    if (ping === undefined && loss === undefined && !p) continue;
+    if (ping === false || ping === 'false') continue;
+    const nf = id === 'ct' ? 'custom_ct_name' : id === 'cu' ? 'custom_cu_name' : id === 'cm' ? 'custom_cm_name' : id === 'bd' ? 'custom_bd_name' : id + '_name';
+    const name = String((p && p.name) || s[nf] || id).trim() || id;
+    out.push({ key: id, label: name, color: __pdColor(out.length) });
   }
-  return [{ key: 'pingCt', label: '电信', color: COLORS.red }, { key: 'pingCu', label: '联通', color: COLORS.amber }, { key: 'pingCm', label: '移动', color: COLORS.blue }, { key: 'pingBd', label: 'BGP', color: COLORS.purple }];
+  if (!out.length) return CARRIERS;
+  return out;
 }
 function carriersFor(server) {
-  if (Array.isArray(server && server.probes) && server.probes.length) {
-    return server.probes.filter(p => p && p.id).map((p, i) => ({
-      key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
-    }));
-  }
-  return CARRIERS;
+  return __pdUnion(server);
 }
 
 
@@ -588,12 +597,7 @@ export async function renderDetail(root, ctx, id) {
     ping: chartCard(
       chartsGrid,
       'Ping',
-      [
-        { key: 'pingCt', label: '电信', color: COLORS.red },
-        { key: 'pingCu', label: '联通', color: COLORS.amber },
-        { key: 'pingCm', label: '移动', color: COLORS.blue },
-        { key: 'pingBd', label: 'BGP', color: COLORS.purple },
-      ],
+      pingSeriesFromData(null, srv),
       { yMax: null, area: false, yFormat: (v) => `${v.toFixed(0)} ms` },
     ),
     load: chartCard(
@@ -648,13 +652,17 @@ export async function renderDetail(root, ctx, id) {
     pingCt: [], pingCu: [], pingCm: [], pingBd: [],
     load1: [], load5: [], load15: [],
   };
+  for (const _sid of ['node_1','node_2','node_3','node_4','node_5','node_6','node_7','node_8','node_9','node_10','node_11','node_12','node_13','node_14','node_15','node_16','node_17','node_18','node_19','node_20']) {
+    liveData['ping_' + _sid] = [];
+  }
 
   function appendLiveSample(d, ts) {
     if (!ts) return;
     const mapped = mapRows([{ ...d, timestamp: ts }]);
     for (const [key, pts] of Object.entries(mapped)) {
-      const arr = liveData[key];
-      if (!arr) continue;
+      if (!Array.isArray(pts)) continue;
+      let arr = liveData[key];
+      if (!arr) { arr = liveData[key] = []; }
       arr.push(...pts);
       if (arr.length > LIVE_MAX_POINTS) arr.splice(0, arr.length - LIVE_MAX_POINTS);
     }

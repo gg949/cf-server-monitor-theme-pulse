@@ -333,12 +333,25 @@ const PING_CARRIERS = [
   { key: 'bd', label: 'BGP' },
 ];
 function pingCarriersFor(server) {
-  const extra = Array.isArray(server && server.probes) ? server.probes.filter(p => p && p.id).map((p, i) => ({
-    key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
-  })) : [];
-  const seen = new Set(extra.map(x => x.key));
-  const base = PING_CARRIERS.filter(c => !seen.has(c.key)).map((c, i) => ({ ...c, color: c.color || __pdColor(i) }));
-  return base.concat(extra);
+  return __pdUnion(server);
+}
+function __pdUnion(server) {
+  const slots = ['ct','cu','cm','bd','node_1','node_2','node_3','node_4','node_5','node_6','node_7','node_8','node_9','node_10','node_11','node_12','node_13','node_14','node_15','node_16','node_17','node_18','node_19','node_20'];
+  const s = server || {};
+  const probeById = new Map((Array.isArray(s.probes) ? s.probes : []).filter(p => p && p.id).map(p => [String(p.id), p]));
+  const out = [];
+  for (const id of slots) {
+    const p = probeById.get(id);
+    const ping = s['ping_' + id];
+    const loss = s['loss_' + id];
+    if (ping === undefined && loss === undefined && !p) continue;
+    if (ping === false || ping === 'false') continue;
+    const nf = id === 'ct' ? 'custom_ct_name' : id === 'cu' ? 'custom_cu_name' : id === 'cm' ? 'custom_cm_name' : id === 'bd' ? 'custom_bd_name' : id + '_name';
+    const name = String((p && p.name) || s[nf] || id).trim() || id;
+    out.push({ key: id, label: name, color: __pdColor(out.length) });
+  }
+  if (!out.length) return PING_CARRIERS;
+  return out;
 }
 
 
@@ -402,7 +415,7 @@ function appendLatencyPoints(d, ts, data) {
   for (const name of ['ping', 'loss']) {
     const point = { ts: bucketTs };
     let has = false;
-    for (const c of ['ct', 'cu', 'cm', 'bd']) {
+    for (const c of ['ct','cu','cm','bd','node_1','node_2','node_3','node_4','node_5','node_6','node_7','node_8','node_9','node_10','node_11','node_12','node_13','node_14','node_15','node_16','node_17','node_18','node_19','node_20']) {
       const v = num(data[`${name}_${c}`]);
       if (v != null) {
         point[c] = v;

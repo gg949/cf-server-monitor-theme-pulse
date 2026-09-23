@@ -10,8 +10,8 @@ const THEME_VERSION = 'v1.2.2';
 
 import {el, fmtClock, serverNow, stateBlock, svg, toast} from './utils.js?v=1.2.2';
 import {getAuthToken, getConfig, saveThemeOptions} from './api.js?v=1.2.2';
-import {renderHome} from './views/home.js?v=1.2.2';
-import {renderDetail} from './views/detail.js?v=1.2.3';
+import {renderHome} from './views/home.js?v=1.2.5';
+import {renderDetail} from './views/detail.js?v=1.2.5';
 
 const html = document.documentElement;
 const THEME_KEY = 'probe_color_mode';

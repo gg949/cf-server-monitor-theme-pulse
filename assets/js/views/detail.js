@@ -1,3 +1,4 @@
+function __pdColor(i){return['#00d4aa','#ffb870','#4da6ff','#b392f0','#ff7b72','#79c0ff','#7ee787','#ffa657','#d2a8ff','#ffa198','#56d4dd','#f2cc60','#bc8cff','#58a6ff','#3fb950','#e3b341','#f85149','#a5d6ff','#39d353','#ffc680','#2f81f7','#d29922','#db61a2','#6e7681'][i%24]}function __pdProbes(server,cfg){if(Array.isArray(server&&server.probes)&&server.probes.length)return server.probes.filter(function(p){return p&&p.id}).map(function(p,i){return{id:i+1,key:String(p.id),name:String(p.name||p.id),ping:p.ping,loss:p.loss,latencyField:'ping_'+p.id,lossField:'loss_'+p.id,field:'ping_'+p.id,pingField:'ping_'+p.id,color:__pdColor(i)}});var keys=['ct','cu','cm','bd','node_1','node_2','node_3','node_4'],out=[],i,id,nm;for(i=0;i<keys.length;i++){id=keys[i];nm=cfg&&(id.indexOf('node_')===0?cfg[id+'_name']:cfg['custom_'+id+'_name']);out.push({id:i+1,key:id,name:String(nm||id).trim()||id,ping:server?server['ping_'+id]:void 0,loss:server?server['loss_'+id]:void 0,latencyField:'ping_'+id,lossField:'loss_'+id,field:'ping_'+id,pingField:'ping_'+id,color:__pdColor(i)})}return out};
 // 详情页视图：单台服务器全量指标 + 历史图表 + 实时追加
 // 数据来源：GET /api/server、GET /api/history/all；实时更新：/api/ws (subscribe=<id>)
 
@@ -72,6 +73,22 @@ const CARRIERS = [
   { key: 'cm', label: '移动' },
   { key: 'bd', label: 'BGP' },
 ];
+function pingSeriesFromData(data, server) {
+  const probes = Array.isArray(server && server.probes) ? server.probes.filter(p => p && p.id) : [];
+  if (probes.length) {
+    return probes.map((p, i) => ({ key: 'ping_' + p.id, label: String(p.name || p.id), color: __pdColor(i) }));
+  }
+  return [{ key: 'pingCt', label: '电信', color: COLORS.red }, { key: 'pingCu', label: '联通', color: COLORS.amber }, { key: 'pingCm', label: '移动', color: COLORS.blue }, { key: 'pingBd', label: 'BGP', color: COLORS.purple }];
+}
+function carriersFor(server) {
+  if (Array.isArray(server && server.probes) && server.probes.length) {
+    return server.probes.filter(p => p && p.id).map((p, i) => ({
+      key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
+    }));
+  }
+  return CARRIERS;
+}
+
 
 function levelClass(p) {
   if (p == null) return '';
@@ -182,7 +199,7 @@ function mapRows(rows) {
     cpu: [], ram: [], swap: [], disk: [],
     diskRead: [], diskWrite: [],
     netIn: [], netOut: [],
-    pingCt: [], pingCu: [], pingCm: [], pingBd: [],
+    pingCt: [], pingCu: [], pingCm: [], pingBd: [], extraPing: {},
     load1: [], load5: [], load15: [],
   };
   const sorted = [...(rows || [])].sort((a, b) => a.timestamp - b.timestamp);
@@ -202,6 +219,20 @@ function mapRows(rows) {
     data.pingCu.push({ x, y: pingState(r.ping_cu).value });
     data.pingCm.push({ x, y: pingState(r.ping_cm).value });
     data.pingBd.push({ x, y: pingState(r.ping_bd).value });
+    if (Array.isArray(r.probes)) {
+      for (const p of r.probes) {
+        if (!p || !p.id) continue;
+        const k = 'ping_' + p.id;
+        if (!data[k]) data[k] = [];
+        data[k].push({ x, y: pingState(p.ping ?? r[k]).value });
+      }
+    } else {
+      for (const [k, v] of Object.entries(r)) {
+        if (!String(k).startsWith('ping_node_')) continue;
+        if (!data[k]) data[k] = [];
+        data[k].push({ x, y: pingState(v).value });
+      }
+    }
     const [l1, l5, l15] = loadParts(r.load_avg);
     data.load1.push({ x, y: l1 });
     data.load5.push({ x, y: l5 });
@@ -363,7 +394,7 @@ export async function renderDetail(root, ctx, id) {
     'div',
     { class: 'tile' },
     el('div', { class: 'tile-label' }, icon('signal'), el('span', { text: '测速' })),
-    el('div', { class: 'ping-grid' }, pingCells.map((c) => c.ref.el)),
+    el('div', { class: 'ping-grid' }),
   );
 
   const gpuTile = tile('GPU', { smallValue: true, icon: 'gpu' });
@@ -439,8 +470,20 @@ export async function renderDetail(root, ctx, id) {
     ipV6.className = `ip-badge${ipReachable(d.ip_v6) ? ' ok' : ''}`;
     ipV6.textContent = `IPv6 ${ipReachable(d.ip_v6) ? '可达' : '不可达'}`;
 
-    for (const c of pingCells) {
-      c.ref.set(d[`ping_${c.key}`], d[`loss_${c.key}`]);
+    const grid = pingTile.querySelector('.ping-grid');
+    grid.textContent = '';
+    pingCells.length = 0;
+    window.__pdDetailServer = d;
+    for (const c of carriersFor(d)) {
+      const cell = pingCell(c.label);
+      if (c.color) {
+        const lab = cell.el.querySelector('.p-label');
+        if (lab) lab.style.color = c.color;
+      }
+      cell.set(d[`ping_${c.key}`] ?? (d.probes || []).find(p => p && p.id === c.key)?.ping,
+               d[`loss_${c.key}`] ?? (d.probes || []).find(p => p && p.id === c.key)?.loss);
+      pingCells.push({ ...c, ref: cell });
+      grid.append(cell.el);
     }
 
     const gpus = parseGPU(d.gpu_info);
@@ -616,7 +659,8 @@ export async function renderDetail(root, ctx, id) {
 
   function applyLiveToCharts() {
     for (const [cid, chart] of Object.entries(charts)) {
-      chart.setSeries(CHART_SERIES[cid].map((d) => ({ ...d, data: liveData[d.key] })));
+      const defs = cid === 'ping' ? pingSeriesFromData(liveData, window.__pdDetailServer) : CHART_SERIES[cid];
+      chart.setSeries(defs.map((d) => ({ ...d, data: liveData[d.key] || [] })));
     }
   }
 
@@ -644,7 +688,7 @@ export async function renderDetail(root, ctx, id) {
       const rows = await getHistory(id, hours);
       const mapped = mapRows(rows);
       for (const [cid, chart] of Object.entries(charts)) {
-        chart.setSeries(CHART_SERIES[cid].map((d) => ({ ...d, data: mapped[d.key] })));
+        chart.setSeries((cid === 'ping' ? pingSeriesFromData(mapped, window.__pdDetailServer) : CHART_SERIES[cid]).map((d) => ({ ...d, data: mapped[d.key] })));
       }
     } catch (err) {
       if (err.status === 401 && hours > 720) {

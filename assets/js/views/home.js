@@ -1,3 +1,4 @@
+function __pdColor(i){return['#00d4aa','#ffb870','#4da6ff','#b392f0','#ff7b72','#79c0ff','#7ee787','#ffa657','#d2a8ff','#ffa198','#56d4dd','#f2cc60','#bc8cff','#58a6ff','#3fb950','#e3b341','#f85149','#a5d6ff','#39d353','#ffc680','#2f81f7','#d29922','#db61a2','#6e7681'][i%24]}function __pdProbes(server,cfg){if(Array.isArray(server&&server.probes)&&server.probes.length)return server.probes.filter(function(p){return p&&p.id}).map(function(p,i){return{id:i+1,key:String(p.id),name:String(p.name||p.id),ping:p.ping,loss:p.loss,latencyField:'ping_'+p.id,lossField:'loss_'+p.id,field:'ping_'+p.id,pingField:'ping_'+p.id,color:__pdColor(i)}});var keys=['ct','cu','cm','bd','node_1','node_2','node_3','node_4'],out=[],i,id,nm;for(i=0;i<keys.length;i++){id=keys[i];nm=cfg&&(id.indexOf('node_')===0?cfg[id+'_name']:cfg['custom_'+id+'_name']);out.push({id:i+1,key:id,name:String(nm||id).trim()||id,ping:server?server['ping_'+id]:void 0,loss:server?server['loss_'+id]:void 0,latencyField:'ping_'+id,lossField:'loss_'+id,field:'ping_'+id,pingField:'ping_'+id,color:__pdColor(i)})}return out};
 // 首页视图：全局统计 + 分组服务器卡片（条形 / 圆环 / 表格三种模式）
 // 数据来源：GET /api/servers；实时更新：/api/ws (subscribe=all)
 
@@ -331,6 +332,15 @@ const PING_CARRIERS = [
   { key: 'cm', label: '移动' },
   { key: 'bd', label: 'BGP' },
 ];
+function pingCarriersFor(server) {
+  if (Array.isArray(server && server.probes) && server.probes.length) {
+    return server.probes.filter(p => p && p.id).map((p, i) => ({
+      key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
+    }));
+  }
+  return PING_CARRIERS;
+}
+
 
 // ---------- 三网详情面板（站点开关 show_three_net_details，对齐官方 2.8.4） ----------
 // 数据：server.ping / server.loss 时序数组 [{ts, ct, cu, cm, bd}]（ts 秒/毫秒兼容），
@@ -554,31 +564,31 @@ function threeNetPanel() {
 }
 
 function pingPanel() {
-  const items = PING_CARRIERS.map((c) => {
-    const val = el('span', { class: 'pp-val mono', text: '—' });
-    const item = el('span', { class: 'pp-item' },
-      el('span', { class: 'pp-label', text: c.label }),
-      val,
-    );
-    return { ...c, val, item };
-  });
-  const panel = el('div', { class: 'ping-panel' }, items.map((p) => p.item));
+  const panel = el('div', { class: 'ping-panel' });
   panel.style.display = 'none';
   return {
     el: panel,
     update(d) {
+      const carriers = pingCarriersFor(d);
+      panel.textContent = '';
       let has = false;
-      for (const p of items) {
-        const pv = pingState(d[`ping_${p.key}`]);
-        if (pv.kind === 'disabled') { p.item.style.display = 'none'; continue; }
-        p.item.style.display = '';
+      for (const c of carriers) {
+        const pv = pingState(d[`ping_${c.key}`] ?? (d.probes || []).find(p => p && p.id === c.key)?.ping);
+        if (pv.kind === 'disabled') continue;
+        const val = el('span', { class: 'pp-val mono', text: '—' });
+        const item = el('span', { class: 'pp-item' },
+          el('span', { class: 'pp-label', text: c.label, style: c.color ? `color:${c.color}` : undefined }),
+          val,
+        );
+        if (c.color) item.style.color = c.color;
         if (pv.kind === 'ok') {
-          p.val.textContent = `${pv.value.toFixed(0)}ms`;
-          p.val.className = `pp-val mono ${pingClass(pv.value)}`;
+          val.textContent = `${pv.value.toFixed(0)}ms`;
+          val.className = `pp-val mono ${pingClass(pv.value)}`;
         } else {
-          p.val.textContent = '—';
-          p.val.className = 'pp-val mono';
+          val.textContent = '—';
+          val.className = 'pp-val mono';
         }
+        panel.append(item);
         has = true;
       }
       panel.style.display = has ? '' : 'none';

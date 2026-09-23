@@ -1,4 +1,4 @@
-function __pdColor(i){return['#00d4aa','#ffb870','#4da6ff','#b392f0','#ff7b72','#79c0ff','#7ee787','#ffa657','#d2a8ff','#ffa198','#56d4dd','#f2cc60','#bc8cff','#58a6ff','#3fb950','#e3b341','#f85149','#a5d6ff','#39d353','#ffc680','#2f81f7','#d29922','#db61a2','#6e7681'][i%24]}function __pdProbes(server,cfg){if(Array.isArray(server&&server.probes)&&server.probes.length)return server.probes.filter(function(p){return p&&p.id}).map(function(p,i){return{id:i+1,key:String(p.id),name:String(p.name||p.id),ping:p.ping,loss:p.loss,latencyField:'ping_'+p.id,lossField:'loss_'+p.id,field:'ping_'+p.id,pingField:'ping_'+p.id,color:__pdColor(i)}});var keys=['ct','cu','cm','bd','node_1','node_2','node_3','node_4'],out=[],i,id,nm;for(i=0;i<keys.length;i++){id=keys[i];nm=cfg&&(id.indexOf('node_')===0?cfg[id+'_name']:cfg['custom_'+id+'_name']);out.push({id:i+1,key:id,name:String(nm||id).trim()||id,ping:server?server['ping_'+id]:void 0,loss:server?server['loss_'+id]:void 0,latencyField:'ping_'+id,lossField:'loss_'+id,field:'ping_'+id,pingField:'ping_'+id,color:__pdColor(i)})}return out};
+function __pdExpandHistory(row){if(!row||typeof row!=="object")return row;var extra=row.extra_probes,obj=null;if(typeof extra==="string"&&extra){try{obj=JSON.parse(extra)}catch(e){obj=null}}else if(extra&&typeof extra==="object")obj=extra;if(obj){for(var k in obj){if(Object.prototype.hasOwnProperty.call(obj,k)&&row[k]===undefined)row[k]=obj[k]}}return row}function __pdColor(i){return['#00d4aa','#ffb870','#4da6ff','#b392f0','#ff7b72','#79c0ff','#7ee787','#ffa657','#d2a8ff','#ffa198','#56d4dd','#f2cc60','#bc8cff','#58a6ff','#3fb950','#e3b341','#f85149','#a5d6ff','#39d353','#ffc680','#2f81f7','#d29922','#db61a2','#6e7681'][i%24]}function __pdProbes(server,cfg){if(Array.isArray(server&&server.probes)&&server.probes.length)return server.probes.filter(function(p){return p&&p.id}).map(function(p,i){return{id:i+1,key:String(p.id),name:String(p.name||p.id),ping:p.ping,loss:p.loss,latencyField:'ping_'+p.id,lossField:'loss_'+p.id,field:'ping_'+p.id,pingField:'ping_'+p.id,color:__pdColor(i)}});var keys=['ct','cu','cm','bd','node_1','node_2','node_3','node_4'],out=[],i,id,nm;for(i=0;i<keys.length;i++){id=keys[i];nm=cfg&&(id.indexOf('node_')===0?cfg[id+'_name']:cfg['custom_'+id+'_name']);out.push({id:i+1,key:id,name:String(nm||id).trim()||id,ping:server?server['ping_'+id]:void 0,loss:server?server['loss_'+id]:void 0,latencyField:'ping_'+id,lossField:'loss_'+id,field:'ping_'+id,pingField:'ping_'+id,color:__pdColor(i)})}return out};
 // 详情页视图：单台服务器全量指标 + 历史图表 + 实时追加
 // 数据来源：GET /api/server、GET /api/history/all；实时更新：/api/ws (subscribe=<id>)
 
@@ -204,7 +204,8 @@ function mapRows(rows) {
     load1: [], load5: [], load15: [],
   };
   const sorted = [...(rows || [])].sort((a, b) => a.timestamp - b.timestamp);
-  for (const r of sorted) {
+  for (const r0 of sorted) {
+    const r=__pdExpandHistory({...r0});
     const x = r.timestamp;
     if (!x) continue;
     data.cpu.push({ x, y: num(r.cpu) });

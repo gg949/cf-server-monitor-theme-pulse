@@ -73,10 +73,11 @@ const CARRIERS = [
   { key: 'cm', label: '移动' },
   { key: 'bd', label: 'BGP' },
 ];
+function pingKey(id){return id==='ct'?'pingCt':id==='cu'?'pingCu':id==='cm'?'pingCm':id==='bd'?'pingBd':'ping_'+id}
 function pingSeriesFromData(data, server) {
   const probes = Array.isArray(server && server.probes) ? server.probes.filter(p => p && p.id) : [];
   if (probes.length) {
-    return probes.map((p, i) => ({ key: 'ping_' + p.id, label: String(p.name || p.id), color: __pdColor(i) }));
+    return probes.map((p, i) => ({ key: pingKey(p.id), label: String(p.name || p.id), color: __pdColor(i) }));
   }
   return [{ key: 'pingCt', label: '电信', color: COLORS.red }, { key: 'pingCu', label: '联通', color: COLORS.amber }, { key: 'pingCm', label: '移动', color: COLORS.blue }, { key: 'pingBd', label: 'BGP', color: COLORS.purple }];
 }
@@ -219,19 +220,20 @@ function mapRows(rows) {
     data.pingCu.push({ x, y: pingState(r.ping_cu).value });
     data.pingCm.push({ x, y: pingState(r.ping_cm).value });
     data.pingBd.push({ x, y: pingState(r.ping_bd).value });
-    if (Array.isArray(r.probes)) {
-      for (const p of r.probes) {
-        if (!p || !p.id) continue;
-        const k = 'ping_' + p.id;
-        if (!data[k]) data[k] = [];
-        data[k].push({ x, y: pingState(p.ping ?? r[k]).value });
-      }
-    } else {
-      for (const [k, v] of Object.entries(r)) {
-        if (!String(k).startsWith('ping_node_')) continue;
-        if (!data[k]) data[k] = [];
-        data[k].push({ x, y: pingState(v).value });
-      }
+    const plist = Array.isArray(r.probes) ? r.probes : [];
+    for (const p of plist) {
+      if (!p || !p.id) continue;
+      const k = pingKey(p.id);
+      if (!data[k]) data[k] = [];
+      if (k==='pingCt'||k==='pingCu'||k==='pingCm'||k==='pingBd') continue;
+      data[k].push({ x, y: pingState(p.ping ?? r['ping_'+p.id]).value });
+    }
+    for (const [k, v] of Object.entries(r)) {
+      if (!String(k).startsWith('ping_node_')) continue;
+      const dk = k;
+      if (!data[dk]) data[dk] = [];
+      if (plist.some(p=>p && ('ping_'+p.id)===k)) continue;
+      data[dk].push({ x, y: pingState(v).value });
     }
     const [l1, l5, l15] = loadParts(r.load_avg);
     data.load1.push({ x, y: l1 });

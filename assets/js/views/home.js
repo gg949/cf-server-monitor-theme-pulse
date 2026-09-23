@@ -333,12 +333,12 @@ const PING_CARRIERS = [
   { key: 'bd', label: 'BGP' },
 ];
 function pingCarriersFor(server) {
-  if (Array.isArray(server && server.probes) && server.probes.length) {
-    return server.probes.filter(p => p && p.id).map((p, i) => ({
-      key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
-    }));
-  }
-  return PING_CARRIERS;
+  const extra = Array.isArray(server && server.probes) ? server.probes.filter(p => p && p.id).map((p, i) => ({
+    key: String(p.id), label: String(p.name || p.id), color: __pdColor(i)
+  })) : [];
+  const seen = new Set(extra.map(x => x.key));
+  const base = PING_CARRIERS.filter(c => !seen.has(c.key)).map((c, i) => ({ ...c, color: c.color || __pdColor(i) }));
+  return base.concat(extra);
 }
 
 
